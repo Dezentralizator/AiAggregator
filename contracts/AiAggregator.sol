@@ -15,14 +15,14 @@ contract Aggregator {
     uint256 private constant uint256Amounts = (amountOfParameters / 256) + 1;
 
     uint256 private constant bytesLength = amountOfParameters/8;
-    uint256 private constant amountOfContributions = 3;
-    uint256 private constant uint16Max = 65536;
+    uint256 private constant amountOfContributions = 10;
+    uint256 private constant uint16Max = 100000000;
 
     uint256 private constant quantileForUpdates = 95;
 
 
 
-    uint256[] startIndexParameterOfVersion;
+    uint256[] startIndex;
 
     uint256[] updatesSend;
     uint256[] normalVector;
@@ -49,7 +49,7 @@ contract Aggregator {
         require(_array.length == amountOfParameters);
         parameters = _array;
         isInitiated = true;
-        startIndexParameterOfVersion.push(0);
+        startIndex.push(0);
 
     }
 
@@ -65,9 +65,9 @@ contract Aggregator {
 
     function setTauAndUpdate() public {
 
-        require(lastCommit-lastCommitInTau > amountOfContributions);
+        require(lastCommit-lastCommitInTau >= amountOfContributions);
         currentTau = sortForTau();
-        firstCommitInTau = lastCommitInTau + 1;
+        firstCommitInTau = lastCommitInTau ;
         lastCommitInTau = lastCommit;
 
         isUpgradeable = true;
@@ -78,12 +78,12 @@ contract Aggregator {
 
         require(isUpgradeable);
         require(_upgrade.length == amountOfParameters);
-        uint256 nextIndex = startIndexParameterOfVersion[startIndexParameterOfVersion.length-1];
+        uint256 currentIndex = startIndex[startIndex.length-1];
         for (uint i = 0; i<amountOfParameters; ++i) {
-            parameters[i+nextIndex] = _upgrade[i];
+            parameters.push( _upgrade[i]);
         }
 
-        startIndexParameterOfVersion.push(nextIndex+amountOfParameters);
+        startIndex.push(currentIndex+amountOfParameters);
         isUpgradeable = false;
 
         
@@ -110,30 +110,22 @@ contract Aggregator {
 
 
     function verifyLine(uint256 parameter) public view returns (bool) {
-
+        require(parameter < amountOfParameters);   
         uint256 tau = currentTau;
         uint256 change = uint16Max;
-        for (uint i = 0 ; i < amountOfContributions ; ++i) {
-            if(isBitOne(updatesSend[firstCommitInTau+i], parameter)){
-                change + normModifier(normalVector[firstCommitInTau+i],tau);
+        for (uint i = firstCommitInTau ; i < lastCommitInTau ; ++i) {
+            if(isBitOne(updatesSend[i], parameter)){
+                change += normModifier(normalVector[i],tau);
             } else {
-                change - normModifier(normalVector[firstCommitInTau+i],tau);
+                change -= normModifier(normalVector[i],tau);
             }
-
-        }
-
-        uint256 start = startIndexParameterOfVersion[startIndexParameterOfVersion.length-2];
-
-        if(change > uint16Max){
-
-            return uint16(change-uint16Max + parameters[start+parameter]) == parameters[start+parameter+32];
-
-        } else {
-
-            return uint16(uint16Max-change + parameters[start+parameter]) == parameters[start+parameter+32];
+            change += normModifier(normalVector[i],tau);
 
 
         }
+
+        return (change-uint16Max + parameters[parameter] == parameters[parameter+amountOfParameters]);
+        
 
     }
 
@@ -146,12 +138,12 @@ contract Aggregator {
 
     function sortForTau() public view returns (uint256 tau) {
 
-        uint256[] memory arrayToSort = new uint256[](lastCommitInTau-lastCommit);
-        for(uint i = 0; i < lastCommitInTau-lastCommit ; ++i){
+        uint256[] memory arrayToSort = new uint256[](lastCommit-lastCommitInTau);
+        for(uint i = 0; i < lastCommit-lastCommitInTau ; ++i){
             arrayToSort[i]= normalVector[i];
         }
         quickSort(arrayToSort, int(0), int(arrayToSort.length - 1));
-        uint256 index = arrayToSort.length * 3 / 4;
+        uint256 index = (arrayToSort.length * quantileForUpdates/100) - 1;
         tau = (arrayToSort[index] + arrayToSort[index+1])/2;
 
     }
@@ -174,6 +166,16 @@ contract Aggregator {
             quickSort(arr, left, j);
         if (i < right)
             quickSort(arr, i, right);
+    }
+
+    function getParamLength() public view returns (uint256){
+        return parameters.length;
+    }
+    function updatesLength() public view returns (uint256){
+        return updatesSend.length;
+    }
+    function normLength() public view returns (uint256){
+        return normalVector.length;
     }
     
 
