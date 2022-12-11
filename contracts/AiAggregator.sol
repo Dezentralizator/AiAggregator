@@ -6,11 +6,12 @@ pragma solidity ^0.8.11;
 /// @notice Aggregator contract to updates AIs decentrally
 /// @dev Allows people to contribute decentrally to an AI
 
+import "hardhat/console.sol";
 
 contract Aggregator {
 
     uint256 private constant amountOfParameters = 32; //amount of params
-    uint256 private constant sizeOfParameters = 16; // size of info
+    uint256 private constant sizeOfParameters = 32; // size of info
     uint256 private constant bytes32Amounts = (amountOfParameters / sizeOfParameters) + 1;
     uint256 private constant uint256Amounts = (amountOfParameters / 256) + 1;
 
@@ -25,8 +26,8 @@ contract Aggregator {
     uint256[] startIndex;
 
     uint256[] updatesSend;
-    uint256[] normalVector;
-    uint16[] public  parameters;
+    uint256[] public normalVector;
+    uint32[] public parameters;
 
     bool private isInitiated;
 
@@ -40,10 +41,13 @@ contract Aggregator {
     uint256 public lastUpdateTime;
     bool public isUpgradeable;
 
+    uint256 public lastTimeStamp;
+    uint256 public constant timeToVerify = 1 days; //1 hour
 
 
 
-    function init(uint16[] calldata _array) public {
+
+    function init(uint32[] calldata _array) public {
 
         require(!isInitiated);
         require(_array.length == amountOfParameters);
@@ -51,11 +55,14 @@ contract Aggregator {
         isInitiated = true;
         startIndex.push(0);
 
+
     }
 
 
     function pushYourUpdate(uint256 input, uint256 normal) public {
 
+        require(lastUpdateTime + timeToVerify < block.timestamp, "Verification time" );
+        require(lastCommit-lastCommitInTau < amountOfContributions, "Max updates accepted reached");
         committers[lastCommit] = msg.sender;
         updatesSend.push(input);
         normalVector.push(normal);
@@ -65,7 +72,7 @@ contract Aggregator {
 
     function setTauAndUpdate() public {
 
-        require(lastCommit-lastCommitInTau >= amountOfContributions);
+        require(lastCommit-lastCommitInTau == amountOfContributions);
         currentTau = sortForTau();
         firstCommitInTau = lastCommitInTau ;
         lastCommitInTau = lastCommit;
@@ -74,20 +81,26 @@ contract Aggregator {
 
     }
 
-    function upgrade(uint16[] memory _upgrade) public {
+    function upgrade(uint32[] memory _upgrade) public {
 
-        require(isUpgradeable);
-        require(_upgrade.length == amountOfParameters);
-        uint256 currentIndex = startIndex[startIndex.length-1];
+        require(isUpgradeable, "Upgrade is not allowed");
+        require(_upgrade.length == amountOfParameters, "Incorrect length of parameters");
+        uint256 currentIndex = firstCommitInTau;
         for (uint i = 0; i<amountOfParameters; ++i) {
             parameters.push( _upgrade[i]);
         }
 
         startIndex.push(currentIndex+amountOfParameters);
+
+
+        lastUpdateTime = block.timestamp;
+
         isUpgradeable = false;
 
         
     }
+
+
 
     function normModifier(uint256 norm, uint256 tau) public pure returns(uint256 ) {
 
@@ -97,41 +110,40 @@ contract Aggregator {
         else {
             return tau;
         }
-
     }
 
-    function claimError(uint256 parameter, uint16[] memory upgrader) public {
+    function claimError(uint256 parameter, uint32[] memory upgrader) public {
 
-        require(verifyLine(parameter) == false);
-        isUpgradeable = true;
-        upgrade(upgrader);
+        require(lastUpdateTime + timeToVerify > block.timestamp, "Too late" );
+        require(verifyLine(parameter) == false, "Parameter does not give back false");
+        upgradeFromClaim(upgrader);
+        lastUpdateTime = block.timestamp;
 
     }
 
 
     function verifyLine(uint256 parameter) public view returns (bool) {
-        require(parameter < amountOfParameters);   
-        uint256 tau = currentTau;
+        require(parameter < amountOfParameters, "too big parameter");   
         uint256 change = uint16Max;
         for (uint i = firstCommitInTau ; i < lastCommitInTau ; ++i) {
             if(isBitOne(updatesSend[i], parameter)){
-                change += normModifier(normalVector[i],tau);
+                change += normModifier(normalVector[i],currentTau);
             } else {
-                change -= normModifier(normalVector[i],tau);
+                change -= normModifier(normalVector[i],currentTau);
             }
-            change += normModifier(normalVector[i],tau);
-
 
         }
+        uint256 value =  (change + parameters[parameter]-uint16Max);
 
-        return (change-uint16Max + parameters[parameter] == parameters[parameter+amountOfParameters]);
+
+        return (value == parameters[parameter+amountOfParameters]);
         
 
     }
 
 
     function isBitOne(uint256 b, uint256 pos) public pure returns (bool) {
-        return ((b >> pos) & 1) == 1;
+        return ((b >> (amountOfParameters-1-pos)) & 1) == 1;
     }
 
 
@@ -148,7 +160,18 @@ contract Aggregator {
 
     }
 
-    function quickSort(uint256[] memory arr, int left, int right) internal pure {
+     function upgradeFromClaim(uint32[] memory _upgrade) private {
+
+        require(_upgrade.length == amountOfParameters, "Incorrect length of parameters");
+        uint256 currentIndex = startIndex[startIndex.length-1];
+        for (uint i = 0; i<amountOfParameters; ++i) {
+            parameters[currentIndex +i] = _upgrade[i];
+        }
+        
+    }
+
+
+    function quickSort(uint256[] memory arr, int left, int right) private pure {
         int i = left;
         int j = right;
         if(i==j) return;
