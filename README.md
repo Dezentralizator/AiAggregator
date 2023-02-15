@@ -1,13 +1,9 @@
-# Sample Hardhat Project
+################## LAUZHACK WINNING PRIZE ################
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+Disco is an open-source collaborative AI project.
 
-Try running some of the following tasks:
+At the Lauzhack, in a team of 2, we presented a federated algorithm who won the first prize of the contest organized by Disco. 
 
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
-```
+The federator of their collaborative AI was transformed into a smart contract allowing to have it fully run decentrally.
+
+By using uint256s as Bitmaps, we managed to allow for significant size of neural networks to be updated.
